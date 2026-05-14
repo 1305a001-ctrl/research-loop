@@ -60,5 +60,20 @@ class Settings(BaseSettings):
     training_export_interval_sec: int = 86_400   # 24h
     training_export_dir: str = "/srv/data/training"
 
+    # --- Halt-fast trigger (venue-scoped 24h PnL circuit breaker) ---
+    # When True, runs the halt-fast loop. Respects `enforce_halts` for
+    # the actual SADD — so this can be enabled in dry-run + observed
+    # for a few cycles before flipping enforce.
+    halt_fast_enabled: bool = True
+    # Floor for the 24h realised PnL. Negative — trip when below.
+    halt_fast_pnl_floor_usd_24h: float = -50.0
+    # Comma-separated list of venues to scope. Comes from env as a CSV.
+    halt_fast_venues: str = "polymarket"
+    # Sub-1 minute would hammer the DB; 60s is the safe minimum.
+    halt_fast_interval_sec: int = 60
+    # Don't trip on a single edge-case close; 1 is the cautious default,
+    # bump if you see spurious trips from edge-case fills.
+    halt_fast_min_n_closed: int = 1
+
 
 settings = Settings()

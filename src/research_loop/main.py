@@ -20,7 +20,7 @@ import structlog
 import uvicorn
 from fastapi import FastAPI, Response
 
-from . import db, halts, learning_loop, training_export
+from . import db, halt_fast, halts, learning_loop, training_export
 from .settings import settings
 from .sharpe import health_badge, should_halt
 
@@ -195,6 +195,17 @@ async def main() -> None:
         tasks.append(outcome_join_loop(stop_event))
     if settings.training_export_enabled:
         tasks.append(training_export_loop(stop_event))
+    if settings.halt_fast_enabled:
+        venues = [v.strip() for v in settings.halt_fast_venues.split(",") if v.strip()]
+        if venues:
+            tasks.append(halt_fast.halt_fast_loop(
+                stop_event,
+                db._get_pool,
+                venues=venues,
+                threshold_usd=settings.halt_fast_pnl_floor_usd_24h,
+                interval_sec=settings.halt_fast_interval_sec,
+                min_n_closed=settings.halt_fast_min_n_closed,
+            ))
 
     await asyncio.gather(*tasks, return_exceptions=True)
 
