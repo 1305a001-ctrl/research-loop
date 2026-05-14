@@ -41,5 +41,24 @@ class Settings(BaseSettings):
     http_port: int = 8015
     log_level: str = "INFO"
 
+    # --- Learning loop ---
+    # Master switch. Disabling skips schema-ensure + all sub-loops.
+    learning_loop_enabled: bool = True
+
+    # Outcome join cadence — converts open feature_outcomes rows into
+    # closed ones by reading positions table. 5 min default; fast enough
+    # to catch closes before the next auto-tune cycle.
+    outcome_join_interval_sec: int = 300
+
+    # Auto-tuner — OFF by default. Needs explicit opt-in (per-strategy
+    # config in next iteration). Once enabled, runs hourly.
+    auto_tuner_enabled: bool = False
+    auto_tuner_interval_sec: int = 3600
+
+    # Training export — nightly Parquet/JSONL snapshots for offline ML.
+    training_export_enabled: bool = True
+    training_export_interval_sec: int = 86_400   # 24h
+    training_export_dir: str = "/srv/data/training"
+
 
 settings = Settings()

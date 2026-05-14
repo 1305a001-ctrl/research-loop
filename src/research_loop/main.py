@@ -14,12 +14,13 @@ from __future__ import annotations
 import asyncio
 import signal
 import time
+from pathlib import Path
 
 import structlog
 import uvicorn
 from fastapi import FastAPI, Response
 
-from . import db, halts
+from . import db, halts, learning_loop, training_export
 from .settings import settings
 from .sharpe import health_badge, should_halt
 
@@ -94,6 +95,42 @@ async def cycle_loop(stop_event: asyncio.Event) -> None:
             pass
 
 
+async def outcome_join_loop(stop_event: asyncio.Event) -> None:
+    """Periodically join newly-closed positions into feature_outcomes."""
+    while not stop_event.is_set():
+        try:
+            pool = await db._get_pool()
+            updated = await learning_loop.run_outcome_join(pool)
+            _last_cycle["outcome_join_updated"] = updated
+        except Exception:
+            log.exception("learning_loop.outcome_join_failed")
+        try:
+            await asyncio.wait_for(
+                stop_event.wait(), timeout=settings.outcome_join_interval_sec,
+            )
+        except TimeoutError:
+            pass
+
+
+async def training_export_loop(stop_event: asyncio.Event) -> None:
+    """Nightly export of (features, outcomes) for ML training prep."""
+    while not stop_event.is_set():
+        try:
+            pool = await db._get_pool()
+            counts = await training_export.run_nightly_export(
+                pool, output_dir=Path(settings.training_export_dir),
+            )
+            _last_cycle["training_export_rows"] = sum(counts.values())
+        except Exception:
+            log.exception("training_export.failed")
+        try:
+            await asyncio.wait_for(
+                stop_event.wait(), timeout=settings.training_export_interval_sec,
+            )
+        except TimeoutError:
+            pass
+
+
 def make_app() -> FastAPI:
     app = FastAPI(title="research-loop", version="0.1.0")
 
@@ -126,9 +163,19 @@ def make_app() -> FastAPI:
 
 async def main() -> None:
     log.info(
-        "research_loop.start version=0.1.0 enforce_halts=%s window_days=%d",
+        "research_loop.start version=0.2.0 enforce_halts=%s window_days=%d "
+        "learning_loop=%s training_export=%s",
         settings.enforce_halts, settings.window_days,
+        settings.learning_loop_enabled, settings.training_export_enabled,
     )
+
+    # Bootstrap learning-loop schema (idempotent)
+    if settings.learning_loop_enabled:
+        try:
+            pool = await db._get_pool()
+            await learning_loop.ensure_schema(pool)
+        except Exception:
+            log.exception("learning_loop.bootstrap_failed — continuing")
 
     stop_event = asyncio.Event()
     app = make_app()
@@ -143,11 +190,13 @@ async def main() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
 
-    await asyncio.gather(
-        cycle_loop(stop_event),
-        server.serve(),
-        return_exceptions=True,
-    )
+    tasks: list = [cycle_loop(stop_event), server.serve()]
+    if settings.learning_loop_enabled:
+        tasks.append(outcome_join_loop(stop_event))
+    if settings.training_export_enabled:
+        tasks.append(training_export_loop(stop_event))
+
+    await asyncio.gather(*tasks, return_exceptions=True)
 
     server.should_exit = True
     await db.close()
