@@ -50,10 +50,19 @@ class Settings(BaseSettings):
     # to catch closes before the next auto-tune cycle.
     outcome_join_interval_sec: int = 300
 
-    # Auto-tuner — OFF by default. Needs explicit opt-in (per-strategy
-    # config in next iteration). Once enabled, runs hourly.
+    # Auto-tuner runtime — OFF by default. When enabled, runs the
+    # per-strategy param-nudge cycle on auto_tuner_interval_sec cadence.
+    # Use auto_tuner_dry_run=true to log decisions without applying them
+    # — recommended for the first 7+ days of operation.
     auto_tuner_enabled: bool = False
     auto_tuner_interval_sec: int = 3600
+    auto_tuner_dry_run: bool = True            # default-deny: log only
+    auto_tuner_min_samples: int = 30           # gate: need ≥30 closes per strategy
+    auto_tuner_days_window: int = 14           # lookback for fetch_recent_closed
+    auto_tuner_closed_limit: int = 100         # max rows per strategy per cycle
+    # Comma-separated strategy slugs to opt into tuning. Empty = none.
+    # Use "all" to opt-in every strategy in auto_tuner_runtime.TUNABLE_PARAMS.
+    auto_tuner_strategies: str = ""
 
     # Training export — nightly Parquet/JSONL snapshots for offline ML.
     training_export_enabled: bool = True
