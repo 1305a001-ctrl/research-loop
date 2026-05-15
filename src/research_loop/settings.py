@@ -50,15 +50,39 @@ class Settings(BaseSettings):
     # to catch closes before the next auto-tune cycle.
     outcome_join_interval_sec: int = 300
 
-    # Auto-tuner — OFF by default. Needs explicit opt-in (per-strategy
-    # config in next iteration). Once enabled, runs hourly.
+    # Auto-tuner runtime — OFF by default. When enabled, runs the
+    # per-strategy param-nudge cycle on auto_tuner_interval_sec cadence.
+    # Use auto_tuner_dry_run=true to log decisions without applying them
+    # — recommended for the first 7+ days of operation.
     auto_tuner_enabled: bool = False
     auto_tuner_interval_sec: int = 3600
+    auto_tuner_dry_run: bool = True            # default-deny: log only
+    auto_tuner_min_samples: int = 30           # gate: need ≥30 closes per strategy
+    auto_tuner_days_window: int = 14           # lookback for fetch_recent_closed
+    auto_tuner_closed_limit: int = 100         # max rows per strategy per cycle
+    # Comma-separated strategy slugs to opt into tuning. Empty = none.
+    # Use "all" to opt-in every strategy in auto_tuner_runtime.TUNABLE_PARAMS.
+    auto_tuner_strategies: str = ""
 
     # Training export — nightly Parquet/JSONL snapshots for offline ML.
     training_export_enabled: bool = True
     training_export_interval_sec: int = 86_400   # 24h
     training_export_dir: str = "/srv/data/training"
+
+    # --- Halt-fast trigger (venue-scoped 24h PnL circuit breaker) ---
+    # When True, runs the halt-fast loop. Respects `enforce_halts` for
+    # the actual SADD — so this can be enabled in dry-run + observed
+    # for a few cycles before flipping enforce.
+    halt_fast_enabled: bool = True
+    # Floor for the 24h realised PnL. Negative — trip when below.
+    halt_fast_pnl_floor_usd_24h: float = -50.0
+    # Comma-separated list of venues to scope. Comes from env as a CSV.
+    halt_fast_venues: str = "polymarket"
+    # Sub-1 minute would hammer the DB; 60s is the safe minimum.
+    halt_fast_interval_sec: int = 60
+    # Don't trip on a single edge-case close; 1 is the cautious default,
+    # bump if you see spurious trips from edge-case fills.
+    halt_fast_min_n_closed: int = 1
 
 
 settings = Settings()

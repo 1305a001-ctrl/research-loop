@@ -20,7 +20,14 @@ import structlog
 import uvicorn
 from fastapi import FastAPI, Response
 
-from . import db, halts, learning_loop, training_export
+from . import (
+    auto_tuner_runtime,
+    db,
+    halt_fast,
+    halts,
+    learning_loop,
+    training_export,
+)
 from .settings import settings
 from .sharpe import health_badge, should_halt
 
@@ -195,6 +202,25 @@ async def main() -> None:
         tasks.append(outcome_join_loop(stop_event))
     if settings.training_export_enabled:
         tasks.append(training_export_loop(stop_event))
+    if settings.halt_fast_enabled:
+        venues = [v.strip() for v in settings.halt_fast_venues.split(",") if v.strip()]
+        if venues:
+            tasks.append(halt_fast.halt_fast_loop(
+                stop_event,
+                db._get_pool,
+                venues=venues,
+                threshold_usd=settings.halt_fast_pnl_floor_usd_24h,
+                interval_sec=settings.halt_fast_interval_sec,
+                min_n_closed=settings.halt_fast_min_n_closed,
+            ))
+    if settings.auto_tuner_enabled:
+        # Redis client getter for the auto-tuner — uses the existing halts
+        # module's singleton so we share the connection pool.
+        tasks.append(auto_tuner_runtime.auto_tuner_loop(
+            stop_event,
+            db._get_pool,
+            halts._get_client,
+        ))
 
     await asyncio.gather(*tasks, return_exceptions=True)
 
