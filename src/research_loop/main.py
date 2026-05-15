@@ -12,6 +12,7 @@ FastAPI /health on :8015 for observability.
 from __future__ import annotations
 
 import asyncio
+import logging
 import signal
 import time
 from pathlib import Path
@@ -30,6 +31,15 @@ from . import (
 )
 from .settings import settings
 from .sharpe import health_badge, should_halt
+
+# Configure stdlib logging so that submodule loggers (halt_fast,
+# auto_tuner_runtime, etc.) using `logging.getLogger(__name__)` reach
+# stdout at INFO level. Without this, INFO-level lines from those
+# modules are filtered by the default WARNING root level.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 structlog.configure(
     processors=[
